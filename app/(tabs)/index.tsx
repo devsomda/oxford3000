@@ -13,8 +13,10 @@ export default function HomeScreen() {
     useWordStore();
 
   const masteredCount = getMasteredCount();
+  const confirmedCount = useWordStore((s) => s.getConfirmedCount)();
   const todayStudied = getTodayStudied();
   const totalWords = OXFORD_3000.length;
+  const excludedCount = confirmedCount;
   const dailyProgress = Math.min(todayStudied / dailyGoal, 1);
 
   const levelStats = useMemo(() => {
@@ -55,7 +57,7 @@ export default function HomeScreen() {
         </View>
         <View style={[styles.statCard, SHADOWS.card]}>
           <Text style={styles.statEmoji}>📚</Text>
-          <Text style={styles.statValue}>{totalWords - masteredCount}</Text>
+          <Text style={styles.statValue}>{totalWords - masteredCount - excludedCount}</Text>
           <Text style={styles.statLabel}>남은 단어</Text>
         </View>
       </View>
@@ -115,20 +117,12 @@ export default function HomeScreen() {
       ))}
 
       {/* Quick Action Buttons */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
-          onPress={() => router.push('/study')}
-        >
-          <Text style={styles.actionBtnText}>📖 학습하기</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: COLORS.primary }]}
-          onPress={() => router.push('/quiz')}
-        >
-          <Text style={styles.actionBtnText}>✏️ 퀴즈 풀기</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
+        onPress={() => router.push('/study')}
+      >
+        <Text style={styles.actionBtnText}>📖 단어 학습하기</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }

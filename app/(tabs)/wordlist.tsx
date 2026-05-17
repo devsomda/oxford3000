@@ -13,14 +13,24 @@ import { OXFORD_3000, LEVEL_COLORS, CEFR, POS_KR, LEVEL_LABEL } from '../../data
 import { COLORS, SHADOWS } from '../../utils/colors';
 
 const LEVELS: CEFR[] = ['A1', 'A2', 'B1', 'B2'];
-type FilterTab = 'all' | 'bookmarked' | 'mastered' | 'learning';
+type FilterTab = 'all' | 'bookmarked' | 'mastered' | 'learning' | 'confirmed';
+
+const FILTER_LABELS: Record<FilterTab, string> = {
+  all: '전체',
+  bookmarked: '⭐ 북마크',
+  mastered: '✅ 완료',
+  learning: '📖 학습중',
+  confirmed: '⚡ 제외됨',
+};
 
 export default function WordListScreen() {
   const [search, setSearch] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<CEFR | 'all'>('all');
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
 
-  const { progress, toggleBookmark } = useWordStore();
+  const { progress, toggleBookmark, unconfirmWord, getConfirmedCount } = useWordStore();
+
+  const confirmedCount = getConfirmedCount();
 
   const filtered = useMemo(() => {
     return OXFORD_3000.filter((w) => {
@@ -29,6 +39,8 @@ export default function WordListScreen() {
       if (filterTab === 'bookmarked' && !p?.bookmarked) return false;
       if (filterTab === 'mastered' && p?.status !== 'mastered') return false;
       if (filterTab === 'learning' && p?.status !== 'learning') return false;
+      if (filterTab === 'confirmed' && p?.status !== 'confirmed') return false;
+      if (filterTab === 'all' && p?.status === 'confirmed') return false; // 제외 단어는 '전체'에서 숨김
       if (search) {
         const q = search.toLowerCase();
         return w.word.toLowerCase().includes(q) || w.meaning.includes(q);
@@ -81,35 +93,35 @@ export default function WordListScreen() {
             ]}
             onPress={() => setSelectedLevel(l)}
           >
-            <Text style={[styles.levelChipText, selectedLevel === l && styles.levelChipTextActive]}>
-              {l}
-            </Text>
+            <Text style={[styles.levelChipText, selectedLevel === l && styles.levelChipTextActive]}>{l}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Filter Tabs */}
       <View style={styles.filterTabs}>
-        {(['all', 'bookmarked', 'mastered', 'learning'] as FilterTab[]).map((tab) => {
-          const labels: Record<FilterTab, string> = {
-            all: '전체',
-            bookmarked: '⭐ 북마크',
-            mastered: '✅ 완료',
-            learning: '📖 학습중',
-          };
-          return (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.filterTab, filterTab === tab && styles.filterTabActive]}
-              onPress={() => setFilterTab(tab)}
-            >
-              <Text style={[styles.filterTabText, filterTab === tab && styles.filterTabTextActive]}>
-                {labels[tab]}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        {(Object.keys(FILTER_LABELS) as FilterTab[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.filterTab, filterTab === tab && styles.filterTabActive]}
+            onPress={() => setFilterTab(tab)}
+          >
+            <Text style={[styles.filterTabText, filterTab === tab && styles.filterTabTextActive]}>
+              {FILTER_LABELS[tab]}
+              {tab === 'confirmed' && confirmedCount > 0 ? ` ${confirmedCount}` : ''}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
+
+      {/* Confirmed banner */}
+      {filterTab === 'confirmed' && (
+        <View style={styles.confirmedBanner}>
+          <Text style={styles.confirmedBannerText}>
+            ⚡ "확실히 알아요"로 표시한 단어예요. 단어 카드의 버튼을 눌러 학습 목록에 다시 추가할 수 있어요.
+          </Text>
+        </View>
+      )}
 
       {/* Word List */}
       <FlatList
@@ -121,9 +133,10 @@ export default function WordListScreen() {
           const p = progress[item.id];
           const isBookmarked = p?.bookmarked ?? false;
           const status = p?.status ?? 'unseen';
+          const isConfirmed = status === 'confirmed';
 
           return (
-            <View style={[styles.wordCard, SHADOWS.card]}>
+            <View style={[styles.wordCard, SHADOWS.card, isConfirmed && styles.wordCardConfirmed]}>
               <View style={styles.wordMain}>
                 <View style={styles.wordLeft}>
                   <View style={styles.wordTopRow}>
@@ -134,30 +147,44 @@ export default function WordListScreen() {
                   <Text style={styles.meaningText}>{item.meaning}</Text>
                   <Text style={styles.exampleText} numberOfLines={1}>"{item.example}"</Text>
                 </View>
-                <TouchableOpacity onPress={() => toggleBookmark(item.id)} style={styles.bookmarkBtn}>
-                  <Text style={styles.bookmarkEmoji}>{isBookmarked ? '⭐' : '☆'}</Text>
-                </TouchableOpacity>
+                {!isConfirmed && (
+                  <TouchableOpacity onPress={() => toggleBookmark(item.id)} style={styles.bookmarkBtn}>
+                    <Text style={styles.bookmarkEmoji}>{isBookmarked ? '⭐' : '☆'}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
+
               <View style={styles.statusRow}>
-                <View style={[
-                  styles.statusBadge,
-                  status === 'mastered' && styles.statusMastered,
-                  status === 'learning' && styles.statusLearning,
-                  status === 'unseen' && styles.statusUnseen,
-                ]}>
-                  <Text style={[
-                    styles.statusText,
-                    status === 'mastered' && { color: COLORS.success },
-                    status === 'learning' && { color: COLORS.warning },
-                    status === 'unseen' && { color: COLORS.textMuted },
-                  ]}>
-                    {status === 'mastered' ? '✅ 완료' : status === 'learning' ? '📖 학습중' : '미학습'}
-                  </Text>
-                </View>
-                {p && (
-                  <Text style={styles.statsText}>
-                    맞음 {p.correctCount} / 틀림 {p.wrongCount}
-                  </Text>
+                {isConfirmed ? (
+                  <>
+                    <View style={styles.confirmedBadge}>
+                      <Text style={styles.confirmedBadgeText}>⚡ 학습 제외됨</Text>
+                    </View>
+                    <TouchableOpacity style={styles.restoreBtn} onPress={() => unconfirmWord(item.id)}>
+                      <Text style={styles.restoreBtnText}>학습 목록에 추가</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <View style={[
+                      styles.statusBadge,
+                      status === 'mastered' && styles.statusMastered,
+                      status === 'learning' && styles.statusLearning,
+                      status === 'unseen' && styles.statusUnseen,
+                    ]}>
+                      <Text style={[
+                        styles.statusText,
+                        status === 'mastered' && { color: COLORS.success },
+                        status === 'learning' && { color: COLORS.warning },
+                        status === 'unseen' && { color: COLORS.textMuted },
+                      ]}>
+                        {status === 'mastered' ? '✅ 완료' : status === 'learning' ? '📖 학습중' : '미학습'}
+                      </Text>
+                    </View>
+                    {p && (
+                      <Text style={styles.statsText}>맞음 {p.correctCount} / 틀림 {p.wrongCount}</Text>
+                    )}
+                  </>
                 )}
               </View>
             </View>
@@ -165,8 +192,12 @@ export default function WordListScreen() {
         }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>🔍</Text>
-            <Text style={styles.emptyText}>검색 결과가 없어요.</Text>
+            <Text style={styles.emptyEmoji}>{filterTab === 'confirmed' ? '⚡' : '🔍'}</Text>
+            <Text style={styles.emptyText}>
+              {filterTab === 'confirmed'
+                ? '제외된 단어가 없어요.'
+                : '검색 결과가 없어요.'}
+            </Text>
           </View>
         }
       />
@@ -210,9 +241,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     marginBottom: 12,
   },
-  searchIcon: {
-    fontSize: 16,
-  },
+  searchIcon: { fontSize: 16 },
   searchInput: {
     flex: 1,
     fontSize: 15,
@@ -253,8 +282,9 @@ const styles = StyleSheet.create({
   filterTabs: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    gap: 6,
-    marginBottom: 14,
+    gap: 4,
+    marginBottom: 10,
+    flexWrap: 'wrap',
   },
   filterTab: {
     paddingHorizontal: 10,
@@ -273,6 +303,20 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: '700',
   },
+  confirmedBanner: {
+    marginHorizontal: 20,
+    marginBottom: 10,
+    backgroundColor: COLORS.accent + '10',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.accent + '30',
+  },
+  confirmedBannerText: {
+    fontSize: 12,
+    color: COLORS.accent,
+    lineHeight: 18,
+  },
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 40,
@@ -283,6 +327,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     gap: 10,
+  },
+  wordCardConfirmed: {
+    opacity: 0.75,
+    borderWidth: 1,
+    borderColor: COLORS.accent + '30',
   },
   wordMain: {
     flexDirection: 'row',
@@ -324,12 +373,8 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontStyle: 'italic',
   },
-  bookmarkBtn: {
-    padding: 4,
-  },
-  bookmarkEmoji: {
-    fontSize: 20,
-  },
+  bookmarkBtn: { padding: 4 },
+  bookmarkEmoji: { fontSize: 20 },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -340,15 +385,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  statusMastered: {
-    backgroundColor: COLORS.success + '15',
-  },
-  statusLearning: {
-    backgroundColor: COLORS.warning + '15',
-  },
-  statusUnseen: {
-    backgroundColor: COLORS.border,
-  },
+  statusMastered: { backgroundColor: COLORS.success + '15' },
+  statusLearning: { backgroundColor: COLORS.warning + '15' },
+  statusUnseen: { backgroundColor: COLORS.border },
   statusText: {
     fontSize: 11,
     fontWeight: '600',
@@ -357,16 +396,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textMuted,
   },
+  confirmedBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: COLORS.accent + '15',
+  },
+  confirmedBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.accent,
+  },
+  restoreBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    backgroundColor: COLORS.primary,
+  },
+  restoreBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   emptyState: {
     alignItems: 'center',
     paddingTop: 60,
     gap: 12,
   },
-  emptyEmoji: {
-    fontSize: 40,
-  },
-  emptyText: {
-    fontSize: 15,
-    color: COLORS.textMuted,
-  },
+  emptyEmoji: { fontSize: 40 },
+  emptyText: { fontSize: 15, color: COLORS.textMuted },
 });

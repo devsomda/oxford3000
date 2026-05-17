@@ -43,14 +43,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="quiz"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} emoji="✏️" label="퀴즈" />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="wordlist"
         options={{
           tabBarIcon: ({ focused }) => (

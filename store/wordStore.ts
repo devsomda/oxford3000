@@ -6,7 +6,7 @@ const STORAGE_KEY = 'oxford3000_progress';
 
 export interface WordProgress {
   wordId: number;
-  status: 'unseen' | 'learning' | 'mastered';
+  status: 'unseen' | 'learning' | 'mastered' | 'confirmed';
   correctCount: number;
   wrongCount: number;
   lastSeen: number; // timestamp
@@ -32,6 +32,8 @@ interface WordStore {
   load: () => Promise<void>;
   save: () => Promise<void>;
   markWord: (wordId: number, correct: boolean) => void;
+  confirmWord: (wordId: number) => void;
+  unconfirmWord: (wordId: number) => void;
   toggleBookmark: (wordId: number) => void;
   setDailyGoal: (goal: number) => void;
   resetProgress: () => void;
@@ -39,8 +41,10 @@ interface WordStore {
   // Selectors (computed)
   getWordProgress: (wordId: number) => WordProgress;
   getDueWords: (level?: CEFR) => Word[];
+  getConfirmedWords: () => Word[];
   getBookmarkedWords: () => Word[];
   getMasteredCount: () => number;
+  getConfirmedCount: () => number;
   getTodayStudied: () => number;
   getStreakCount: () => number;
 }
@@ -101,6 +105,20 @@ export const useWordStore = create<WordStore>((set, get) => ({
     } catch {
       // ignore
     }
+  },
+
+  confirmWord: (wordId) => {
+    const { progress } = get();
+    const prev = progress[wordId] || defaultProgress(wordId);
+    set({ progress: { ...progress, [wordId]: { ...prev, status: 'confirmed', lastSeen: Date.now() } } });
+    get().save();
+  },
+
+  unconfirmWord: (wordId) => {
+    const { progress } = get();
+    const prev = progress[wordId] || defaultProgress(wordId);
+    set({ progress: { ...progress, [wordId]: { ...prev, status: prev.correctCount > 0 ? 'learning' : 'unseen', nextReview: 0 } } });
+    get().save();
   },
 
   markWord: (wordId, correct) => {
@@ -201,9 +219,14 @@ export const useWordStore = create<WordStore>((set, get) => ({
       if (level && w.level !== level) return false;
       const p = progress[w.id];
       if (!p) return true; // unseen words are always due
-      if (p.status === 'mastered') return false;
+      if (p.status === 'mastered' || p.status === 'confirmed') return false;
       return now >= p.nextReview;
     });
+  },
+
+  getConfirmedWords: () => {
+    const { progress } = get();
+    return OXFORD_3000.filter((w) => progress[w.id]?.status === 'confirmed');
   },
 
   getBookmarkedWords: () => {
@@ -214,6 +237,11 @@ export const useWordStore = create<WordStore>((set, get) => ({
   getMasteredCount: () => {
     const { progress } = get();
     return Object.values(progress).filter((p) => p.status === 'mastered').length;
+  },
+
+  getConfirmedCount: () => {
+    const { progress } = get();
+    return Object.values(progress).filter((p) => p.status === 'confirmed').length;
   },
 
   getTodayStudied: () => {

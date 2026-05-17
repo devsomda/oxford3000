@@ -6,6 +6,7 @@ import {
   Platform,
   Animated,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { useState, useRef, useMemo, useCallback } from 'react';
 import { useWordStore } from '../../store/wordStore';
@@ -14,251 +15,423 @@ import { COLORS, SHADOWS } from '../../utils/colors';
 
 const { width } = Dimensions.get('window');
 const LEVELS: CEFR[] = ['A1', 'A2', 'B1', 'B2'];
+type StudyMode = 'flashcard' | 'quiz';
 
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildChoices(wordId: number, correctAnswer: string, mode: 'en-ko' | 'ko-en') {
+  const distractors = shuffle(OXFORD_3000.filter((w) => w.id !== wordId))
+    .slice(0, 3)
+    .map((w) => (mode === 'en-ko' ? w.meaning : w.word));
+  return shuffle([correctAnswer, ...distractors]);
+}
+
+// ─── Setup Screen ───────────────────────────────────────────────────────────
+type SetupProps = {
+  selectedLevel: CEFR | 'all';
+  mode: StudyMode;
+  onLevelChange: (l: CEFR | 'all') => void;
+  onModeChange: (m: StudyMode) => void;
+  onStart: () => void;
+  dueCount: number;
+};
+
+function SetupScreen({ selectedLevel, mode, onLevelChange, onModeChange, onStart, dueCount }: SetupProps) {
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.setupContent}>
+      <Text style={styles.pageTitle}>단어 학습하기</Text>
+
+      <Text style={styles.sectionLabel}>난이도 선택</Text>
+      <View style={styles.optionRow}>
+        {(['all', ...LEVELS] as const).map((l) => (
+          <TouchableOpacity
+            key={l}
+            style={[
+              styles.chip,
+              selectedLevel === l && styles.chipActive,
+              l !== 'all' && selectedLevel === l && { backgroundColor: LEVEL_COLORS[l], borderColor: LEVEL_COLORS[l] },
+            ]}
+            onPress={() => onLevelChange(l)}
+          >
+            <Text style={[styles.chipText, selectedLevel === l && styles.chipTextActive]}>
+              {l === 'all' ? '전체' : LEVEL_LABEL[l]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.sectionLabel}>학습 방식</Text>
+      <View style={styles.modeRow}>
+        <TouchableOpacity
+          style={[styles.modeCard, mode === 'flashcard' && styles.modeCardActive]}
+          onPress={() => onModeChange('flashcard')}
+        >
+          <Text style={styles.modeEmoji}>🃏</Text>
+          <Text style={[styles.modeName, mode === 'flashcard' && styles.modeNameActive]}>플래시카드</Text>
+          <Text style={styles.modeDesc}>카드를 넘기며{'\n'}학습해요</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeCard, mode === 'quiz' && styles.modeCardActive]}
+          onPress={() => onModeChange('quiz')}
+        >
+          <Text style={styles.modeEmoji}>✏️</Text>
+          <Text style={[styles.modeName, mode === 'quiz' && styles.modeNameActive]}>퀴즈</Text>
+          <Text style={styles.modeDesc}>4지선다로{'\n'}실력을 확인해요</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.infoCard, SHADOWS.card]}>
+        <Text style={styles.infoText}>
+          📚 학습할 단어 <Text style={styles.infoHighlight}>{dueCount}개</Text>
+        </Text>
+        <Text style={styles.infoSubText}>
+          "확실히 알아요"로 표시한 단어는 학습에서 제외됩니다.{'\n'}
+          제외된 단어는 단어장에서 다시 추가할 수 있어요.
+        </Text>
+      </View>
+
+      {dueCount === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyEmoji}>🎓</Text>
+          <Text style={styles.emptyTitle}>이 레벨 완료!</Text>
+          <Text style={styles.emptyDesc}>모든 단어를 학습했거나 제외했어요.</Text>
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.startBtn} onPress={onStart}>
+          <Text style={styles.startBtnText}>학습 시작!</Text>
+        </TouchableOpacity>
+      )}
+    </ScrollView>
+  );
+}
+
+// ─── Result Screen ────────────────────────────────────────────────────────
+type ResultProps = {
+  correct: number;
+  wrong: number;
+  confirmed: number;
+  onRestart: () => void;
+};
+
+function ResultScreen({ correct, wrong, confirmed, onRestart }: ResultProps) {
+  const total = correct + wrong;
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+  return (
+    <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <Text style={styles.resultEmoji}>{accuracy >= 80 ? '🏆' : accuracy >= 50 ? '💪' : '📚'}</Text>
+      <Text style={styles.resultScore}>{total > 0 ? `${accuracy}%` : '완료!'}</Text>
+      <Text style={styles.resultSub}>학습 결과</Text>
+      <View style={styles.resultRow}>
+        <View style={styles.resultItem}>
+          <Text style={[styles.resultNum, { color: COLORS.success }]}>{correct}</Text>
+          <Text style={styles.resultLabel}>맞음</Text>
+        </View>
+        <View style={styles.resultDivider} />
+        <View style={styles.resultItem}>
+          <Text style={[styles.resultNum, { color: COLORS.error }]}>{wrong}</Text>
+          <Text style={styles.resultLabel}>틀림</Text>
+        </View>
+        <View style={styles.resultDivider} />
+        <View style={styles.resultItem}>
+          <Text style={[styles.resultNum, { color: COLORS.accent }]}>{confirmed}</Text>
+          <Text style={styles.resultLabel}>제외됨</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={styles.restartBtn} onPress={onRestart}>
+        <Text style={styles.restartBtnText}>다시 하기</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────
 export default function StudyScreen() {
   const [selectedLevel, setSelectedLevel] = useState<CEFR | 'all'>('all');
+  const [mode, setMode] = useState<StudyMode>('flashcard');
+  const [started, setStarted] = useState(false);
   const [cardIndex, setCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [sessionStats, setSessionStats] = useState({ correct: 0, wrong: 0 });
-  const [isSessionDone, setIsSessionDone] = useState(false);
+  const [quizSelected, setQuizSelected] = useState<string | null>(null);
+  const [sessionStats, setSessionStats] = useState({ correct: 0, wrong: 0, confirmed: 0 });
+  const [isDone, setIsDone] = useState(false);
 
-  const { markWord, toggleBookmark, getWordProgress, getDueWords } = useWordStore();
+  const { markWord, confirmWord, toggleBookmark, getWordProgress, getDueWords } = useWordStore();
   const flipAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   const studyWords = useMemo(() => {
     const level = selectedLevel === 'all' ? undefined : selectedLevel;
     const due = getDueWords(level);
-    if (due.length === 0) {
-      // fallback: show unseen/learning words even if not due
-      return OXFORD_3000.filter((w) => {
-        if (level && w.level !== level) return false;
-        const p = getWordProgress(w.id);
-        return p.status !== 'mastered';
-      }).slice(0, 20);
-    }
-    return due.slice(0, 20);
-  }, [selectedLevel]);
+    if (due.length === 0) return [];
+    return shuffle(due).slice(0, 20);
+  }, [started, selectedLevel]);
+
+  const quizChoices = useMemo(() => {
+    if (!studyWords[cardIndex]) return [];
+    const w = studyWords[cardIndex];
+    return buildChoices(w.id, w.meaning, 'en-ko');
+  }, [cardIndex, studyWords]);
 
   const currentWord = studyWords[cardIndex];
+  const wordProgress = currentWord ? getWordProgress(currentWord.id) : null;
 
-  const flip = useCallback(() => {
-    if (isFlipped) return;
-    Animated.spring(flipAnim, {
-      toValue: 1,
-      friction: 8,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-    setIsFlipped(true);
-  }, [isFlipped, flipAnim]);
-
-  const nextCard = useCallback(
-    (correct: boolean) => {
-      markWord(currentWord.id, correct);
-      setSessionStats((s) => ({
-        correct: s.correct + (correct ? 1 : 0),
-        wrong: s.wrong + (correct ? 0 : 1),
-      }));
-
-      // Slide out
+  const goNext = useCallback(
+    (direction: 'left' | 'right') => {
       Animated.timing(slideAnim, {
-        toValue: correct ? -width : width,
-        duration: 200,
+        toValue: direction === 'left' ? -width : width,
+        duration: 180,
         useNativeDriver: true,
       }).start(() => {
         slideAnim.setValue(0);
         flipAnim.setValue(0);
         setIsFlipped(false);
+        setQuizSelected(null);
         if (cardIndex + 1 >= studyWords.length) {
-          setIsSessionDone(true);
+          setIsDone(true);
         } else {
           setCardIndex((i) => i + 1);
         }
       });
     },
-    [currentWord, cardIndex, studyWords.length, markWord, flipAnim, slideAnim]
+    [cardIndex, studyWords.length, slideAnim, flipAnim]
   );
+
+  const handleMark = useCallback(
+    (correct: boolean) => {
+      if (!currentWord) return;
+      markWord(currentWord.id, correct);
+      setSessionStats((s) => ({
+        ...s,
+        correct: s.correct + (correct ? 1 : 0),
+        wrong: s.wrong + (correct ? 0 : 1),
+      }));
+      goNext(correct ? 'left' : 'right');
+    },
+    [currentWord, markWord, goNext]
+  );
+
+  const handleConfirm = useCallback(() => {
+    if (!currentWord) return;
+    confirmWord(currentWord.id);
+    setSessionStats((s) => ({ ...s, confirmed: s.confirmed + 1 }));
+    goNext('left');
+  }, [currentWord, confirmWord, goNext]);
+
+  const handleQuizSelect = useCallback(
+    (choice: string) => {
+      if (quizSelected !== null || !currentWord) return;
+      setQuizSelected(choice);
+      const correct = choice === currentWord.meaning;
+      markWord(currentWord.id, correct);
+      setSessionStats((s) => ({
+        ...s,
+        correct: s.correct + (correct ? 1 : 0),
+        wrong: s.wrong + (correct ? 0 : 1),
+      }));
+      setTimeout(() => goNext('left'), 900);
+    },
+    [quizSelected, currentWord, markWord, goNext]
+  );
+
+  const handleFlip = useCallback(() => {
+    if (isFlipped) return;
+    Animated.spring(flipAnim, { toValue: 1, friction: 8, tension: 40, useNativeDriver: true }).start();
+    setIsFlipped(true);
+  }, [isFlipped, flipAnim]);
 
   const restart = () => {
     setCardIndex(0);
     setIsFlipped(false);
-    setSessionStats({ correct: 0, wrong: 0 });
-    setIsSessionDone(false);
+    setQuizSelected(null);
+    setSessionStats({ correct: 0, wrong: 0, confirmed: 0 });
+    setIsDone(false);
+    setStarted(false);
     flipAnim.setValue(0);
     slideAnim.setValue(0);
   };
 
-  const frontInterpolate = flipAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
-  });
-  const backInterpolate = flipAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['180deg', '360deg'],
-  });
+  const dueCount = useMemo(() => {
+    const level = selectedLevel === 'all' ? undefined : selectedLevel;
+    return getDueWords(level).length;
+  }, [selectedLevel]);
 
-  if (isSessionDone) {
-    const total = sessionStats.correct + sessionStats.wrong;
-    const accuracy = total > 0 ? Math.round((sessionStats.correct / total) * 100) : 0;
+  // Setup
+  if (!started) {
+    return (
+      <SetupScreen
+        selectedLevel={selectedLevel}
+        mode={mode}
+        onLevelChange={setSelectedLevel}
+        onModeChange={setMode}
+        onStart={() => setStarted(true)}
+        dueCount={dueCount}
+      />
+    );
+  }
+
+  // Done
+  if (isDone) {
+    return <ResultScreen {...sessionStats} onRestart={restart} />;
+  }
+
+  if (!currentWord) return null;
+
+  // ── Flashcard Mode ────────────────────────────────────────────────────────
+  if (mode === 'flashcard') {
+    const frontRot = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+    const backRot = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '360deg'] });
+
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>학습 결과</Text>
+          <TouchableOpacity onPress={restart} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>← 설정</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerProgress}>{cardIndex + 1} / {studyWords.length}</Text>
+          <View style={styles.sessionBadges}>
+            <Text style={[styles.badge, { color: COLORS.success }]}>✓{sessionStats.correct}</Text>
+            <Text style={[styles.badge, { color: COLORS.error }]}>✗{sessionStats.wrong}</Text>
+          </View>
         </View>
-        <View style={styles.resultCard}>
-          <Text style={styles.resultEmoji}>{accuracy >= 80 ? '🎉' : accuracy >= 50 ? '💪' : '📚'}</Text>
-          <Text style={styles.resultAccuracy}>{accuracy}%</Text>
-          <Text style={styles.resultSub}>정답률</Text>
-          <View style={styles.resultRow}>
-            <View style={styles.resultItem}>
-              <Text style={[styles.resultNum, { color: COLORS.success }]}>{sessionStats.correct}</Text>
-              <Text style={styles.resultLabel}>맞춤</Text>
-            </View>
-            <View style={styles.resultDivider} />
-            <View style={styles.resultItem}>
-              <Text style={[styles.resultNum, { color: COLORS.error }]}>{sessionStats.wrong}</Text>
-              <Text style={styles.resultLabel}>틀림</Text>
+
+        {/* Progress bar */}
+        <View style={styles.progressBarWrap}>
+          <View style={[styles.progressFill, { width: `${(cardIndex / studyWords.length) * 100}%` as any }]} />
+        </View>
+
+        {/* Card */}
+        <Animated.View style={[styles.cardContainer, { transform: [{ translateX: slideAnim }] }]}>
+          <TouchableOpacity activeOpacity={0.95} onPress={handleFlip} style={styles.cardTouchable}>
+            {/* Front */}
+            <Animated.View
+              style={[styles.card, styles.cardFront, SHADOWS.heavy, { transform: [{ rotateY: frontRot }] }]}
+            >
+              <View style={[styles.levelTag, { backgroundColor: LEVEL_COLORS[currentWord.level] + '20' }]}>
+                <Text style={[styles.levelTagText, { color: LEVEL_COLORS[currentWord.level] }]}>
+                  {LEVEL_LABEL[currentWord.level]}
+                </Text>
+              </View>
+              <Text style={styles.wordText}>{currentWord.word}</Text>
+              <Text style={styles.posText}>{POS_KR[currentWord.pos]}</Text>
+              <Text style={styles.flipHint}>탭하여 뜻 보기</Text>
+              <TouchableOpacity style={styles.bookmarkBtn} onPress={() => toggleBookmark(currentWord.id)}>
+                <Text style={styles.bookmarkEmoji}>{wordProgress?.bookmarked ? '⭐' : '☆'}</Text>
+              </TouchableOpacity>
+            </Animated.View>
+            {/* Back */}
+            <Animated.View
+              style={[styles.card, styles.cardBack, SHADOWS.heavy, { transform: [{ rotateY: backRot }] }]}
+            >
+              <View style={[styles.levelTag, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                <Text style={[styles.levelTagText, { color: 'rgba(255,255,255,0.8)' }]}>{currentWord.word}</Text>
+              </View>
+              <Text style={styles.meaningText}>{currentWord.meaning}</Text>
+              <Text style={styles.exampleText}>"{currentWord.example}"</Text>
+            </Animated.View>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Action buttons */}
+        {isFlipped ? (
+          <View style={styles.actionArea}>
+            {/* 확실히 알아요 */}
+            <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
+              <Text style={styles.confirmBtnText}>⚡ 확실히 알아요</Text>
+              <Text style={styles.confirmBtnSub}>이후 학습에서 제외</Text>
+            </TouchableOpacity>
+            <View style={styles.actionRow}>
+              <TouchableOpacity style={[styles.actionBtn, styles.wrongBtn]} onPress={() => handleMark(false)}>
+                <Text style={styles.actionBtnText}>✗ 몰랐어요</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, styles.correctBtn]} onPress={() => handleMark(true)}>
+                <Text style={styles.actionBtnText}>✓ 알았어요</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <TouchableOpacity style={styles.restartBtn} onPress={restart}>
-            <Text style={styles.restartBtnText}>다시 학습하기</Text>
-          </TouchableOpacity>
-        </View>
+        ) : (
+          <View style={styles.hintRow}>
+            <Text style={styles.hintText}>카드를 탭해서 뜻을 확인하세요</Text>
+          </View>
+        )}
       </View>
     );
   }
 
-  if (!currentWord) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>플래시카드</Text>
-        </View>
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyEmoji}>🎓</Text>
-          <Text style={styles.emptyTitle}>학습 완료!</Text>
-          <Text style={styles.emptyText}>이 레벨의 모든 단어를 마스터했어요.</Text>
-        </View>
-      </View>
-    );
-  }
-
-  const wordProgress = getWordProgress(currentWord.id);
-
+  // ── Quiz Mode ─────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>플래시카드</Text>
-        <Text style={styles.headerProgress}>
-          {cardIndex + 1} / {studyWords.length}
-        </Text>
-      </View>
-
-      {/* Level Filter */}
-      <View style={styles.levelFilter}>
-        <TouchableOpacity
-          style={[styles.levelChip, selectedLevel === 'all' && styles.levelChipActive]}
-          onPress={() => { setSelectedLevel('all'); restart(); }}
-        >
-          <Text style={[styles.levelChipText, selectedLevel === 'all' && styles.levelChipTextActive]}>전체</Text>
+        <TouchableOpacity onPress={restart} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>← 설정</Text>
         </TouchableOpacity>
-        {LEVELS.map((l) => (
-          <TouchableOpacity
-            key={l}
-            style={[
-              styles.levelChip,
-              selectedLevel === l && { backgroundColor: LEVEL_COLORS[l] },
-            ]}
-            onPress={() => { setSelectedLevel(l); restart(); }}
-          >
-            <Text style={[styles.levelChipText, selectedLevel === l && styles.levelChipTextActive]}>
-              {l}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <Text style={styles.headerProgress}>{cardIndex + 1} / {studyWords.length}</Text>
+        <View style={styles.sessionBadges}>
+          <Text style={[styles.badge, { color: COLORS.success }]}>✓{sessionStats.correct}</Text>
+          <Text style={[styles.badge, { color: COLORS.error }]}>✗{sessionStats.wrong}</Text>
+        </View>
       </View>
 
-      {/* Session Stats */}
-      <View style={styles.sessionStats}>
-        <Text style={[styles.sessionStat, { color: COLORS.success }]}>✓ {sessionStats.correct}</Text>
-        <Text style={[styles.sessionStat, { color: COLORS.error }]}>✗ {sessionStats.wrong}</Text>
+      <View style={styles.progressBarWrap}>
+        <View style={[styles.progressFill, { width: `${(cardIndex / studyWords.length) * 100}%` as any }]} />
       </View>
 
-      {/* Flashcard */}
-      <Animated.View style={[styles.cardContainer, { transform: [{ translateX: slideAnim }] }]}>
-        <TouchableOpacity activeOpacity={0.95} onPress={flip} style={styles.cardTouchable}>
-          {/* Front */}
-          <Animated.View
-            style={[
-              styles.card,
-              styles.cardFront,
-              SHADOWS.heavy,
-              { transform: [{ rotateY: frontInterpolate }] },
-            ]}
-          >
-            <View style={[styles.levelTag, { backgroundColor: LEVEL_COLORS[currentWord.level] + '20' }]}>
-              <Text style={[styles.levelTagText, { color: LEVEL_COLORS[currentWord.level] }]}>
-                {LEVEL_LABEL[currentWord.level]}
-              </Text>
-            </View>
-            <Text style={styles.wordText}>{currentWord.word}</Text>
-            <Text style={styles.posText}>{POS_KR[currentWord.pos]}</Text>
-            <Text style={styles.flipHint}>탭하여 뜻 보기</Text>
-            <TouchableOpacity
-              style={styles.bookmarkBtn}
-              onPress={() => toggleBookmark(currentWord.id)}
-            >
-              <Text style={styles.bookmarkEmoji}>
-                {wordProgress.bookmarked ? '⭐' : '☆'}
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* Back */}
-          <Animated.View
-            style={[
-              styles.card,
-              styles.cardBack,
-              SHADOWS.heavy,
-              { transform: [{ rotateY: backInterpolate }] },
-            ]}
-          >
-            <View style={[styles.levelTag, { backgroundColor: LEVEL_COLORS[currentWord.level] + '20' }]}>
-              <Text style={[styles.levelTagText, { color: LEVEL_COLORS[currentWord.level] }]}>
-                {currentWord.word}
-              </Text>
-            </View>
-            <Text style={styles.meaningText}>{currentWord.meaning}</Text>
-            <Text style={styles.exampleText}>"{currentWord.example}"</Text>
-          </Animated.View>
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* Action Buttons */}
-      {isFlipped && (
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.wrongBtn]}
-            onPress={() => nextCard(false)}
-          >
-            <Text style={styles.actionBtnText}>✗ 몰랐어요</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.correctBtn]}
-            onPress={() => nextCard(true)}
-          >
-            <Text style={styles.actionBtnText}>✓ 알았어요</Text>
-          </TouchableOpacity>
+      <ScrollView contentContainerStyle={styles.quizContent} showsVerticalScrollIndicator={false}>
+        {/* Level badge */}
+        <View style={[styles.levelTag, { backgroundColor: LEVEL_COLORS[currentWord.level] + '20', alignSelf: 'flex-start', marginBottom: 12 }]}>
+          <Text style={[styles.levelTagText, { color: LEVEL_COLORS[currentWord.level] }]}>
+            {LEVEL_LABEL[currentWord.level]}
+          </Text>
         </View>
-      )}
 
-      {!isFlipped && (
-        <View style={styles.hintRow}>
-          <Text style={styles.hintText}>카드를 탭해서 뜻을 확인하세요</Text>
+        {/* Question card */}
+        <View style={[styles.quizQuestionCard, SHADOWS.heavy]}>
+          <Text style={styles.quizLabel}>뜻을 고르세요</Text>
+          <Text style={styles.quizWord}>{currentWord.word}</Text>
+          <Text style={styles.quizPos}>{POS_KR[currentWord.pos]}</Text>
         </View>
-      )}
+
+        {/* Choices */}
+        <View style={styles.choices}>
+          {quizChoices.map((choice, idx) => {
+            let choiceStyle = styles.choice;
+            let textColor = COLORS.text;
+            if (quizSelected !== null) {
+              if (choice === currentWord.meaning) {
+                choiceStyle = StyleSheet.flatten([styles.choice, styles.choiceCorrect]) as any;
+                textColor = '#FFFFFF';
+              } else if (choice === quizSelected) {
+                choiceStyle = StyleSheet.flatten([styles.choice, styles.choiceWrong]) as any;
+                textColor = '#FFFFFF';
+              } else {
+                choiceStyle = StyleSheet.flatten([styles.choice, styles.choiceDimmed]) as any;
+                textColor = COLORS.textMuted;
+              }
+            }
+            return (
+              <TouchableOpacity key={idx} style={choiceStyle} onPress={() => handleQuizSelect(choice)} activeOpacity={0.8}>
+                <Text style={[styles.choiceIndex, { color: quizSelected !== null ? textColor : COLORS.textMuted }]}>
+                  {String.fromCharCode(65 + idx)}
+                </Text>
+                <Text style={[styles.choiceText, { color: textColor }]}>{choice}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* 확실히 알아요 - quiz mode */}
+        {quizSelected === null && (
+          <TouchableOpacity style={styles.confirmBtnSmall} onPress={handleConfirm}>
+            <Text style={styles.confirmBtnSmallText}>⚡ 확실히 알아요 — 이후 학습에서 제외</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -269,59 +442,170 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 16,
+
+  // Setup
+  setupContent: {
+    padding: 20,
+    paddingBottom: 60,
+    gap: 14,
   },
-  headerTitle: {
-    fontSize: 22,
+  pageTitle: {
+    fontSize: 24,
     fontWeight: '800',
     color: COLORS.text,
+    marginBottom: 4,
   },
-  headerProgress: {
-    fontSize: 14,
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
     color: COLORS.textSecondary,
-    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  levelFilter: {
+  optionRow: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
+    flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
   },
-  levelChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: COLORS.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
   },
-  levelChipActive: {
+  chipActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
-  levelChipText: {
-    fontSize: 12,
+  chipText: {
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.textSecondary,
   },
-  levelChipTextActive: {
+  chipTextActive: {
     color: '#FFFFFF',
   },
-  sessionStats: {
+  modeRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 20,
-    marginBottom: 16,
+    gap: 12,
   },
-  sessionStat: {
+  modeCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 18,
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+  },
+  modeCardActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accent + '08',
+  },
+  modeEmoji: {
+    fontSize: 28,
+  },
+  modeName: {
     fontSize: 14,
     fontWeight: '700',
+    color: COLORS.textSecondary,
   },
+  modeNameActive: {
+    color: COLORS.accent,
+  },
+  modeDesc: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  infoCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    gap: 6,
+  },
+  infoText: {
+    fontSize: 14,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  infoHighlight: {
+    color: COLORS.accent,
+    fontWeight: '800',
+  },
+  infoSubText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    lineHeight: 18,
+  },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 8,
+  },
+  emptyEmoji: { fontSize: 48 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  emptyDesc: { fontSize: 13, color: COLORS.textMuted },
+  startBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  startBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 17,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  backBtn: {
+    paddingVertical: 4,
+  },
+  backBtnText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  headerProgress: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  sessionBadges: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  badge: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  progressBarWrap: {
+    height: 3,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 20,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.accent,
+    borderRadius: 2,
+  },
+
+  // Flashcard
   cardContainer: {
     flex: 1,
     alignItems: 'center',
@@ -330,7 +614,7 @@ const styles = StyleSheet.create({
   },
   cardTouchable: {
     width: '100%',
-    aspectRatio: 0.75,
+    aspectRatio: 0.72,
   },
   card: {
     position: 'absolute',
@@ -341,14 +625,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backfaceVisibility: 'hidden',
-    gap: 12,
+    gap: 10,
   },
-  cardFront: {
-    backgroundColor: COLORS.surface,
-  },
-  cardBack: {
-    backgroundColor: COLORS.primary,
-  },
+  cardFront: { backgroundColor: COLORS.surface },
+  cardBack: { backgroundColor: COLORS.primary },
   levelTag: {
     position: 'absolute',
     top: 20,
@@ -357,156 +637,168 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  levelTagText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  levelTagText: { fontSize: 12, fontWeight: '700' },
   wordText: {
-    fontSize: 42,
+    fontSize: 40,
     fontWeight: '800',
     color: COLORS.text,
     textAlign: 'center',
     letterSpacing: -1,
   },
-  posText: {
-    fontSize: 14,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-  },
-  flipHint: {
-    position: 'absolute',
-    bottom: 24,
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  bookmarkBtn: {
-    position: 'absolute',
-    top: 16,
-    right: 20,
-  },
-  bookmarkEmoji: {
-    fontSize: 22,
-  },
+  posText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500' },
+  flipHint: { position: 'absolute', bottom: 24, fontSize: 12, color: COLORS.textMuted },
+  bookmarkBtn: { position: 'absolute', top: 16, right: 20 },
+  bookmarkEmoji: { fontSize: 22 },
   meaningText: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
     letterSpacing: -0.5,
   },
   exampleText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.65)',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
     textAlign: 'center',
     fontStyle: 'italic',
-    lineHeight: 22,
+    lineHeight: 20,
     paddingHorizontal: 8,
+  },
+
+  // Action area (flashcard)
+  actionArea: {
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+    paddingTop: 12,
+    gap: 10,
+  },
+  confirmBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+    gap: 2,
+  },
+  confirmBtnText: {
+    color: COLORS.accent,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  confirmBtnSub: {
+    color: COLORS.textMuted,
+    fontSize: 11,
   },
   actionRow: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
     gap: 12,
-    paddingTop: 16,
   },
   actionBtn: {
     flex: 1,
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: 14,
+    paddingVertical: 15,
     alignItems: 'center',
   },
-  wrongBtn: {
-    backgroundColor: COLORS.error,
-  },
-  correctBtn: {
-    backgroundColor: COLORS.success,
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  wrongBtn: { backgroundColor: COLORS.error },
+  correctBtn: { backgroundColor: COLORS.success },
+  actionBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   hintRow: {
     paddingBottom: Platform.OS === 'ios' ? 24 : 16,
     paddingTop: 16,
     alignItems: 'center',
   },
-  hintText: {
-    fontSize: 13,
-    color: COLORS.textMuted,
+  hintText: { fontSize: 13, color: COLORS.textMuted },
+
+  // Quiz
+  quizContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
+  quizQuestionCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+    padding: 28,
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 40,
+    gap: 8,
+    marginBottom: 16,
   },
-  emptyEmoji: {
-    fontSize: 56,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.text,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-  },
-  resultCard: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    gap: 12,
-  },
-  resultEmoji: {
-    fontSize: 64,
-  },
-  resultAccuracy: {
-    fontSize: 56,
-    fontWeight: '800',
-    color: COLORS.text,
-  },
-  resultSub: {
-    fontSize: 16,
-    color: COLORS.textMuted,
-  },
-  resultRow: {
+  quizLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: '600', letterSpacing: 0.5 },
+  quizWord: { fontSize: 34, fontWeight: '800', color: '#FFFFFF', textAlign: 'center', letterSpacing: -0.5 },
+  quizPos: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
+  choices: { gap: 10 },
+  choice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 32,
-    marginTop: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
   },
-  resultItem: {
+  choiceCorrect: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    backgroundColor: COLORS.success,
+    borderRadius: 14,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.success,
   },
-  resultNum: {
-    fontSize: 32,
-    fontWeight: '800',
+  choiceWrong: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.error,
+    borderRadius: 14,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.error,
   },
-  resultLabel: {
+  choiceDimmed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    opacity: 0.4,
+  },
+  choiceIndex: { fontSize: 13, fontWeight: '700', width: 18 },
+  choiceText: { fontSize: 15, fontWeight: '600', flex: 1 },
+  confirmBtnSmall: {
+    marginTop: 16,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+  },
+  confirmBtnSmallText: {
+    color: COLORS.accent,
+    fontWeight: '600',
     fontSize: 13,
-    color: COLORS.textMuted,
   },
-  resultDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: COLORS.border,
-  },
+
+  // Result
+  resultEmoji: { fontSize: 64 },
+  resultScore: { fontSize: 52, fontWeight: '800', color: COLORS.text },
+  resultSub: { fontSize: 15, color: COLORS.textMuted },
+  resultRow: { flexDirection: 'row', alignItems: 'center', gap: 28, marginTop: 12 },
+  resultItem: { alignItems: 'center', gap: 4 },
+  resultNum: { fontSize: 30, fontWeight: '800' },
+  resultLabel: { fontSize: 12, color: COLORS.textMuted },
+  resultDivider: { width: 1, height: 36, backgroundColor: COLORS.border },
   restartBtn: {
-    marginTop: 24,
+    marginTop: 28,
     backgroundColor: COLORS.accent,
     borderRadius: 16,
     paddingVertical: 16,
-    paddingHorizontal: 40,
+    paddingHorizontal: 48,
   },
-  restartBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  restartBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
 });

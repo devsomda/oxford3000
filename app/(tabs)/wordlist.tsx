@@ -1,0 +1,372 @@
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  TextInput,
+  Platform,
+} from 'react-native';
+import { useState, useMemo } from 'react';
+import { useWordStore } from '../../store/wordStore';
+import { OXFORD_3000, LEVEL_COLORS, CEFR, POS_KR, LEVEL_LABEL } from '../../data/oxford3000';
+import { COLORS, SHADOWS } from '../../utils/colors';
+
+const LEVELS: CEFR[] = ['A1', 'A2', 'B1', 'B2'];
+type FilterTab = 'all' | 'bookmarked' | 'mastered' | 'learning';
+
+export default function WordListScreen() {
+  const [search, setSearch] = useState('');
+  const [selectedLevel, setSelectedLevel] = useState<CEFR | 'all'>('all');
+  const [filterTab, setFilterTab] = useState<FilterTab>('all');
+
+  const { progress, toggleBookmark } = useWordStore();
+
+  const filtered = useMemo(() => {
+    return OXFORD_3000.filter((w) => {
+      if (selectedLevel !== 'all' && w.level !== selectedLevel) return false;
+      const p = progress[w.id];
+      if (filterTab === 'bookmarked' && !p?.bookmarked) return false;
+      if (filterTab === 'mastered' && p?.status !== 'mastered') return false;
+      if (filterTab === 'learning' && p?.status !== 'learning') return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return w.word.toLowerCase().includes(q) || w.meaning.includes(q);
+      }
+      return true;
+    });
+  }, [search, selectedLevel, filterTab, progress]);
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>단어장</Text>
+        <Text style={styles.headerCount}>{filtered.length}개</Text>
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchWrap}>
+        <Text style={styles.searchIcon}>🔍</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="단어 검색..."
+          placeholderTextColor={COLORS.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Text style={styles.clearBtn}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Level Filter */}
+      <View style={styles.levelFilter}>
+        <TouchableOpacity
+          style={[styles.levelChip, selectedLevel === 'all' && styles.levelChipActive]}
+          onPress={() => setSelectedLevel('all')}
+        >
+          <Text style={[styles.levelChipText, selectedLevel === 'all' && styles.levelChipTextActive]}>전체</Text>
+        </TouchableOpacity>
+        {LEVELS.map((l) => (
+          <TouchableOpacity
+            key={l}
+            style={[
+              styles.levelChip,
+              selectedLevel === l && { backgroundColor: LEVEL_COLORS[l], borderColor: LEVEL_COLORS[l] },
+            ]}
+            onPress={() => setSelectedLevel(l)}
+          >
+            <Text style={[styles.levelChipText, selectedLevel === l && styles.levelChipTextActive]}>
+              {l}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Filter Tabs */}
+      <View style={styles.filterTabs}>
+        {(['all', 'bookmarked', 'mastered', 'learning'] as FilterTab[]).map((tab) => {
+          const labels: Record<FilterTab, string> = {
+            all: '전체',
+            bookmarked: '⭐ 북마크',
+            mastered: '✅ 완료',
+            learning: '📖 학습중',
+          };
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.filterTab, filterTab === tab && styles.filterTabActive]}
+              onPress={() => setFilterTab(tab)}
+            >
+              <Text style={[styles.filterTabText, filterTab === tab && styles.filterTabTextActive]}>
+                {labels[tab]}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Word List */}
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) => {
+          const p = progress[item.id];
+          const isBookmarked = p?.bookmarked ?? false;
+          const status = p?.status ?? 'unseen';
+
+          return (
+            <View style={[styles.wordCard, SHADOWS.card]}>
+              <View style={styles.wordMain}>
+                <View style={styles.wordLeft}>
+                  <View style={styles.wordTopRow}>
+                    <Text style={styles.wordText}>{item.word}</Text>
+                    <View style={[styles.levelDot, { backgroundColor: LEVEL_COLORS[item.level] }]} />
+                  </View>
+                  <Text style={styles.posText}>{POS_KR[item.pos]}</Text>
+                  <Text style={styles.meaningText}>{item.meaning}</Text>
+                  <Text style={styles.exampleText} numberOfLines={1}>"{item.example}"</Text>
+                </View>
+                <TouchableOpacity onPress={() => toggleBookmark(item.id)} style={styles.bookmarkBtn}>
+                  <Text style={styles.bookmarkEmoji}>{isBookmarked ? '⭐' : '☆'}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.statusRow}>
+                <View style={[
+                  styles.statusBadge,
+                  status === 'mastered' && styles.statusMastered,
+                  status === 'learning' && styles.statusLearning,
+                  status === 'unseen' && styles.statusUnseen,
+                ]}>
+                  <Text style={[
+                    styles.statusText,
+                    status === 'mastered' && { color: COLORS.success },
+                    status === 'learning' && { color: COLORS.warning },
+                    status === 'unseen' && { color: COLORS.textMuted },
+                  ]}>
+                    {status === 'mastered' ? '✅ 완료' : status === 'learning' ? '📖 학습중' : '미학습'}
+                  </Text>
+                </View>
+                {p && (
+                  <Text style={styles.statsText}>
+                    맞음 {p.correctCount} / 틀림 {p.wrongCount}
+                  </Text>
+                )}
+              </View>
+            </View>
+          );
+        }}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>🔍</Text>
+            <Text style={styles.emptyText}>검색 결과가 없어요.</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.text,
+  },
+  headerCount: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    marginHorizontal: 20,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 12,
+  },
+  searchIcon: {
+    fontSize: 16,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.text,
+    padding: 0,
+  },
+  clearBtn: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+  },
+  levelFilter: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 8,
+    marginBottom: 10,
+  },
+  levelChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  levelChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  levelChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  levelChipTextActive: {
+    color: '#FFFFFF',
+  },
+  filterTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 6,
+    marginBottom: 14,
+  },
+  filterTab: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  filterTabActive: {
+    backgroundColor: COLORS.border,
+  },
+  filterTabText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+  },
+  filterTabTextActive: {
+    color: COLORS.text,
+    fontWeight: '700',
+  },
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    gap: 10,
+  },
+  wordCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  wordMain: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  wordLeft: {
+    flex: 1,
+    gap: 3,
+  },
+  wordTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  wordText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: -0.3,
+  },
+  levelDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  posText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+  },
+  meaningText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  exampleText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+  },
+  bookmarkBtn: {
+    padding: 4,
+  },
+  bookmarkEmoji: {
+    fontSize: 20,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statusBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  statusMastered: {
+    backgroundColor: COLORS.success + '15',
+  },
+  statusLearning: {
+    backgroundColor: COLORS.warning + '15',
+  },
+  statusUnseen: {
+    backgroundColor: COLORS.border,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  statsText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 60,
+    gap: 12,
+  },
+  emptyEmoji: {
+    fontSize: 40,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: COLORS.textMuted,
+  },
+});

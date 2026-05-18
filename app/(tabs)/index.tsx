@@ -80,7 +80,7 @@ export default function HomeScreen() {
       <View style={[styles.todayCard, SHADOWS.heavy]}>
         <Text style={styles.todayLabel}>오늘의 단어</Text>
         <Text style={styles.todayWord}>{todayWord.word}</Text>
-        <Text style={styles.todayMeaning}>{todayWord.meaning}</Text>
+        <Text style={styles.todayMeaning}>{todayWord.senses[0].meaning}</Text>
         <Text style={styles.todayExample}>"{todayWord.example}"</Text>
         <View style={[styles.levelBadge, { backgroundColor: LEVEL_COLORS[todayWord.level] + '20' }]}>
           <Text style={[styles.levelBadgeText, { color: LEVEL_COLORS[todayWord.level] }]}>

@@ -43,7 +43,7 @@ export default function WordListScreen() {
       if (filterTab === 'all' && p?.status === 'confirmed') return false; // 제외 단어는 '전체'에서 숨김
       if (search) {
         const q = search.toLowerCase();
-        return w.word.toLowerCase().includes(q) || w.meaning.includes(q);
+        return w.word.toLowerCase().includes(q) || w.senses.some((s) => s.meaning.includes(q));
       }
       return true;
     });
@@ -143,8 +143,12 @@ export default function WordListScreen() {
                     <Text style={styles.wordText}>{item.word}</Text>
                     <View style={[styles.levelDot, { backgroundColor: LEVEL_COLORS[item.level] }]} />
                   </View>
-                  <Text style={styles.posText}>{POS_KR[item.pos]}</Text>
-                  <Text style={styles.meaningText}>{item.meaning}</Text>
+                  {item.senses.map((sense, i) => (
+                    <View key={i} style={styles.senseRow}>
+                      <Text style={styles.posText}>{POS_KR[sense.pos]}</Text>
+                      <Text style={styles.meaningText}>{sense.meaning}</Text>
+                    </View>
+                  ))}
                   <Text style={styles.exampleText} numberOfLines={1}>"{item.example}"</Text>
                 </View>
                 {!isConfirmed && (
@@ -357,6 +361,12 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  senseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 1,
   },
   posText: {
     fontSize: 11,

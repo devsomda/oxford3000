@@ -29,7 +29,7 @@ function shuffle<T>(arr: T[]): T[] {
 function buildChoices(wordId: number, correctAnswer: string, mode: 'en-ko' | 'ko-en') {
   const distractors = shuffle(OXFORD_3000.filter((w) => w.id !== wordId))
     .slice(0, 3)
-    .map((w) => (mode === 'en-ko' ? w.meaning : w.word));
+    .map((w) => (mode === 'en-ko' ? w.senses[0].meaning : w.word));
   return shuffle([correctAnswer, ...distractors]);
 }
 
@@ -176,7 +176,7 @@ export default function StudyScreen() {
   const quizChoices = useMemo(() => {
     if (!studyWords[cardIndex]) return [];
     const w = studyWords[cardIndex];
-    return buildChoices(w.id, w.meaning, 'en-ko');
+    return buildChoices(w.id, w.senses[0].meaning, 'en-ko');
   }, [cardIndex, studyWords]);
 
   const currentWord = studyWords[cardIndex];
@@ -228,7 +228,7 @@ export default function StudyScreen() {
     (choice: string) => {
       if (quizSelected !== null || !currentWord) return;
       setQuizSelected(choice);
-      const correct = choice === currentWord.meaning;
+      const correct = choice === currentWord.senses[0].meaning;
       markWord(currentWord.id, correct);
       setSessionStats((s) => ({
         ...s,
@@ -319,7 +319,7 @@ export default function StudyScreen() {
                 </Text>
               </View>
               <Text style={styles.wordText}>{currentWord.word}</Text>
-              <Text style={styles.posText}>{POS_KR[currentWord.pos]}</Text>
+              <Text style={styles.posText}>{currentWord.senses.map((s) => POS_KR[s.pos]).join(' / ')}</Text>
               <Text style={styles.flipHint}>탭하여 뜻 보기</Text>
               <TouchableOpacity style={styles.bookmarkBtn} onPress={() => toggleBookmark(currentWord.id)}>
                 <Text style={styles.bookmarkEmoji}>{wordProgress?.bookmarked ? '⭐' : '☆'}</Text>
@@ -332,7 +332,12 @@ export default function StudyScreen() {
               <View style={[styles.levelTag, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
                 <Text style={[styles.levelTagText, { color: 'rgba(255,255,255,0.8)' }]}>{currentWord.word}</Text>
               </View>
-              <Text style={styles.meaningText}>{currentWord.meaning}</Text>
+              {currentWord.senses.map((s, i) => (
+                <View key={i} style={styles.senseRow}>
+                  <Text style={styles.sensePos}>{POS_KR[s.pos]}</Text>
+                  <Text style={styles.meaningText}>{s.meaning}</Text>
+                </View>
+              ))}
               <Text style={styles.exampleText}>"{currentWord.example}"</Text>
             </Animated.View>
           </TouchableOpacity>
@@ -394,7 +399,7 @@ export default function StudyScreen() {
         <View style={[styles.quizQuestionCard, SHADOWS.heavy]}>
           <Text style={styles.quizLabel}>뜻을 고르세요</Text>
           <Text style={styles.quizWord}>{currentWord.word}</Text>
-          <Text style={styles.quizPos}>{POS_KR[currentWord.pos]}</Text>
+          <Text style={styles.quizPos}>{currentWord.senses.map((s) => POS_KR[s.pos]).join(' / ')}</Text>
         </View>
 
         {/* Choices */}
@@ -403,7 +408,7 @@ export default function StudyScreen() {
             let choiceStyle = styles.choice;
             let textColor = COLORS.text;
             if (quizSelected !== null) {
-              if (choice === currentWord.meaning) {
+              if (choice === currentWord.senses[0].meaning) {
                 choiceStyle = StyleSheet.flatten([styles.choice, styles.choiceCorrect]) as any;
                 textColor = '#FFFFFF';
               } else if (choice === quizSelected) {
@@ -646,6 +651,8 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
   },
   posText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500' },
+  senseRow: { alignItems: 'center', marginVertical: 2 },
+  sensePos: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '500', marginBottom: 2 },
   flipHint: { position: 'absolute', bottom: 24, fontSize: 12, color: COLORS.textMuted },
   bookmarkBtn: { position: 'absolute', top: 16, right: 20 },
   bookmarkEmoji: { fontSize: 22 },

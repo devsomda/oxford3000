@@ -75,7 +75,7 @@ function SetupScreen({ selectedLevel, mode, onLevelChange, onModeChange, onStart
         >
           <Text style={styles.modeEmoji}>🃏</Text>
           <Text style={[styles.modeName, mode === 'flashcard' && styles.modeNameActive]}>플래시카드</Text>
-          <Text style={styles.modeDesc}>카드를 넘기며{'\n'}학습해요</Text>
+          <Text style={styles.modeDesc}>처음 단어를 외우고{'\n'}아는 단어를 줄여나가요</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.modeCard, mode === 'quiz' && styles.modeCardActive]}
@@ -92,8 +92,8 @@ function SetupScreen({ selectedLevel, mode, onLevelChange, onModeChange, onStart
           📚 학습할 단어 <Text style={styles.infoHighlight}>{dueCount}개</Text>
         </Text>
         <Text style={styles.infoSubText}>
-          "확실히 알아요"로 표시한 단어는 학습에서 제외됩니다.{'\n'}
-          제외된 단어는 단어장에서 다시 추가할 수 있어요.
+          같은 단어를 <Text style={styles.infoHighlight}>5회 연속 정답</Text>하면 완료로 분류돼요.{'\n'}
+          "확실히 알아요"로 표시한 단어는 학습에서 제외돼요.
         </Text>
       </View>
 
@@ -143,6 +143,11 @@ function ResultScreen({ correct, wrong, confirmed, onRestart }: ResultProps) {
           <Text style={[styles.resultNum, { color: COLORS.accent }]}>{confirmed}</Text>
           <Text style={styles.resultLabel}>제외됨</Text>
         </View>
+      </View>
+      <View style={styles.masteryHint}>
+        <Text style={styles.masteryHintText}>
+          💡 같은 단어를 5회 연속 정답하면 ✅ 완료로 분류돼요
+        </Text>
       </View>
       <TouchableOpacity style={styles.restartBtn} onPress={onRestart}>
         <Text style={styles.restartBtnText}>다시 하기</Text>
@@ -800,8 +805,18 @@ const styles = StyleSheet.create({
   resultNum: { fontSize: 30, fontWeight: '800' },
   resultLabel: { fontSize: 12, color: COLORS.textMuted },
   resultDivider: { width: 1, height: 36, backgroundColor: COLORS.border },
+  masteryHint: {
+    marginTop: 20,
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  masteryHintText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center' },
   restartBtn: {
-    marginTop: 28,
+    marginTop: 16,
     backgroundColor: COLORS.accent,
     borderRadius: 16,
     paddingVertical: 16,

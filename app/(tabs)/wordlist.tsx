@@ -114,6 +114,15 @@ export default function WordListScreen() {
         ))}
       </View>
 
+      {/* Mastered banner */}
+      {filterTab === 'mastered' && (
+        <View style={styles.masteredBanner}>
+          <Text style={styles.masteredBannerText}>
+            ✅ 같은 단어를 5회 연속 정답하면 완료로 분류돼요.
+          </Text>
+        </View>
+      )}
+
       {/* Confirmed banner */}
       {filterTab === 'confirmed' && (
         <View style={styles.confirmedBanner}>
@@ -306,6 +315,20 @@ const styles = StyleSheet.create({
   filterTabTextActive: {
     color: COLORS.text,
     fontWeight: '700',
+  },
+  masteredBanner: {
+    marginHorizontal: 20,
+    marginBottom: 10,
+    backgroundColor: '#4CAF5010',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#4CAF5030',
+  },
+  masteredBannerText: {
+    fontSize: 13,
+    color: '#2E7D32',
+    lineHeight: 18,
   },
   confirmedBanner: {
     marginHorizontal: 20,

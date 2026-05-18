@@ -10,12 +10,13 @@ import {
 } from 'react-native';
 import { useState, useRef, useMemo, useCallback } from 'react';
 import { useWordStore } from '../../store/wordStore';
-import { OXFORD_3000, LEVEL_COLORS, LEVEL_LABEL, CEFR, POS_KR } from '../../data/oxford3000';
+import { OXFORD_3000, LEVEL_COLORS, LEVEL_LABEL, CEFR, POS_KR, Word } from '../../data/oxford3000';
 import { COLORS, SHADOWS } from '../../utils/colors';
 
 const { width } = Dimensions.get('window');
 const LEVELS: CEFR[] = ['A1', 'A2', 'B1', 'B2'];
 type StudyMode = 'flashcard' | 'quiz';
+type QuizDirection = 'en-ko' | 'ko-en';
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -26,24 +27,26 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function buildChoices(wordId: number, correctAnswer: string, mode: 'en-ko' | 'ko-en') {
+function buildChoices(wordId: number, correctAnswer: string, direction: QuizDirection) {
   const distractors = shuffle(OXFORD_3000.filter((w) => w.id !== wordId))
     .slice(0, 3)
-    .map((w) => (mode === 'en-ko' ? w.senses[0].meaning : w.word));
+    .map((w) => (direction === 'en-ko' ? w.senses[0].meaning : w.word));
   return shuffle([correctAnswer, ...distractors]);
 }
 
-// ─── Setup Screen ───────────────────────────────────────────────────────────
+// ─── Setup Screen ────────────────────────────────────────────────────────────
 type SetupProps = {
   selectedLevel: CEFR | 'all';
   mode: StudyMode;
+  direction: QuizDirection;
   onLevelChange: (l: CEFR | 'all') => void;
   onModeChange: (m: StudyMode) => void;
+  onDirectionChange: (d: QuizDirection) => void;
   onStart: () => void;
   dueCount: number;
 };
 
-function SetupScreen({ selectedLevel, mode, onLevelChange, onModeChange, onStart, dueCount }: SetupProps) {
+function SetupScreen({ selectedLevel, mode, direction, onLevelChange, onModeChange, onDirectionChange, onStart, dueCount }: SetupProps) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.setupContent}>
       <Text style={styles.pageTitle}>단어 학습하기</Text>
@@ -87,6 +90,22 @@ function SetupScreen({ selectedLevel, mode, onLevelChange, onModeChange, onStart
         </TouchableOpacity>
       </View>
 
+      <Text style={styles.sectionLabel}>문제 방향</Text>
+      <View style={styles.optionRow}>
+        <TouchableOpacity
+          style={[styles.chip, direction === 'en-ko' && styles.chipActive]}
+          onPress={() => onDirectionChange('en-ko')}
+        >
+          <Text style={[styles.chipText, direction === 'en-ko' && styles.chipTextActive]}>영어 → 한국어</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.chip, direction === 'ko-en' && styles.chipActive]}
+          onPress={() => onDirectionChange('ko-en')}
+        >
+          <Text style={[styles.chipText, direction === 'ko-en' && styles.chipTextActive]}>한국어 → 영어</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={[styles.infoCard, SHADOWS.card]}>
         <Text style={styles.infoText}>
           📚 학습할 단어 <Text style={styles.infoHighlight}>{dueCount}개</Text>
@@ -112,7 +131,33 @@ function SetupScreen({ selectedLevel, mode, onLevelChange, onModeChange, onStart
   );
 }
 
-// ─── Result Screen ────────────────────────────────────────────────────────
+// ─── Review Prompt Screen ─────────────────────────────────────────────────────
+type ReviewPromptProps = {
+  count: number;
+  onReview: () => void;
+  onSkip: () => void;
+};
+
+function ReviewPromptScreen({ count, onReview, onSkip }: ReviewPromptProps) {
+  return (
+    <View style={[styles.container, styles.reviewPromptContainer]}>
+      <Text style={styles.reviewPromptEmoji}>🔄</Text>
+      <Text style={styles.reviewPromptTitle}>다시 외워볼까요?</Text>
+      <Text style={styles.reviewPromptDesc}>
+        이번 세션에서{'\n'}
+        <Text style={styles.reviewPromptCount}>{count}개</Text>의 단어를 놓쳤어요.
+      </Text>
+      <TouchableOpacity style={styles.reviewBtn} onPress={onReview}>
+        <Text style={styles.reviewBtnText}>다시 학습하기</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.skipBtn} onPress={onSkip}>
+        <Text style={styles.skipBtnText}>결과 보기</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Result Screen ─────────────────────────────────────────────────────────────
 type ResultProps = {
   correct: number;
   wrong: number;
@@ -156,41 +201,54 @@ function ResultScreen({ correct, wrong, confirmed, onRestart }: ResultProps) {
   );
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────
+// ─── Main Component ────────────────────────────────────────────────────────────
 export default function StudyScreen() {
   const [selectedLevel, setSelectedLevel] = useState<CEFR | 'all'>('all');
   const [mode, setMode] = useState<StudyMode>('flashcard');
+  const [direction, setDirection] = useState<QuizDirection>('en-ko');
   const [started, setStarted] = useState(false);
   const [cardIndex, setCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [quizSelected, setQuizSelected] = useState<string | null>(null);
   const [sessionStats, setSessionStats] = useState({ correct: 0, wrong: 0, confirmed: 0 });
   const [isDone, setIsDone] = useState(false);
+  const [isReviewPhase, setIsReviewPhase] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [reviewWords, setReviewWords] = useState<Word[]>([]);
+
+  // wrong words accumulated via ref to avoid re-render during session
+  const wrongWordsRef = useRef<Word[]>([]);
 
   const { markWord, confirmWord, toggleBookmark, getWordProgress, getDueWords } = useWordStore();
   const flipAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   const studyWords = useMemo(() => {
+    if (isReviewPhase) return reviewWords;
     const level = selectedLevel === 'all' ? undefined : selectedLevel;
     const due = getDueWords(level);
     if (due.length === 0) return [];
     return shuffle(due).slice(0, 20);
-  }, [started, selectedLevel]);
+  }, [started, selectedLevel, isReviewPhase, reviewWords]);
+
+  const correctAnswer = useCallback(
+    (w: Word) => (direction === 'en-ko' ? w.senses[0].meaning : w.word),
+    [direction]
+  );
 
   const quizChoices = useMemo(() => {
     if (!studyWords[cardIndex]) return [];
     const w = studyWords[cardIndex];
-    return buildChoices(w.id, w.senses[0].meaning, 'en-ko');
-  }, [cardIndex, studyWords]);
+    return buildChoices(w.id, correctAnswer(w), direction);
+  }, [cardIndex, studyWords, direction, correctAnswer]);
 
   const currentWord = studyWords[cardIndex];
   const wordProgress = currentWord ? getWordProgress(currentWord.id) : null;
 
   const goNext = useCallback(
-    (direction: 'left' | 'right') => {
+    (dir: 'left' | 'right') => {
       Animated.timing(slideAnim, {
-        toValue: direction === 'left' ? -width : width,
+        toValue: dir === 'left' ? -width : width,
         duration: 180,
         useNativeDriver: true,
       }).start(() => {
@@ -212,6 +270,9 @@ export default function StudyScreen() {
     (correct: boolean) => {
       if (!currentWord) return;
       markWord(currentWord.id, correct);
+      if (!correct && !isReviewPhase) {
+        wrongWordsRef.current = [...wrongWordsRef.current, currentWord];
+      }
       setSessionStats((s) => ({
         ...s,
         correct: s.correct + (correct ? 1 : 0),
@@ -219,7 +280,7 @@ export default function StudyScreen() {
       }));
       goNext(correct ? 'left' : 'right');
     },
-    [currentWord, markWord, goNext]
+    [currentWord, markWord, goNext, isReviewPhase]
   );
 
   const handleConfirm = useCallback(() => {
@@ -233,8 +294,11 @@ export default function StudyScreen() {
     (choice: string) => {
       if (quizSelected !== null || !currentWord) return;
       setQuizSelected(choice);
-      const correct = choice === currentWord.senses[0].meaning;
+      const correct = choice === correctAnswer(currentWord);
       markWord(currentWord.id, correct);
+      if (!correct && !isReviewPhase) {
+        wrongWordsRef.current = [...wrongWordsRef.current, currentWord];
+      }
       setSessionStats((s) => ({
         ...s,
         correct: s.correct + (correct ? 1 : 0),
@@ -242,7 +306,7 @@ export default function StudyScreen() {
       }));
       setTimeout(() => goNext('left'), 900);
     },
-    [quizSelected, currentWord, markWord, goNext]
+    [quizSelected, currentWord, markWord, goNext, correctAnswer, isReviewPhase]
   );
 
   const handleFlip = useCallback(() => {
@@ -251,7 +315,22 @@ export default function StudyScreen() {
     setIsFlipped(true);
   }, [isFlipped, flipAnim]);
 
+  const startReview = useCallback(() => {
+    setReviewWords(shuffle(wrongWordsRef.current));
+    setIsReviewPhase(true);
+    setCardIndex(0);
+    setIsFlipped(false);
+    setQuizSelected(null);
+    setIsDone(false);
+    flipAnim.setValue(0);
+    slideAnim.setValue(0);
+  }, [flipAnim, slideAnim]);
+
   const restart = () => {
+    wrongWordsRef.current = [];
+    setReviewWords([]);
+    setIsReviewPhase(false);
+    setShowResult(false);
     setCardIndex(0);
     setIsFlipped(false);
     setQuizSelected(null);
@@ -267,31 +346,88 @@ export default function StudyScreen() {
     return getDueWords(level).length;
   }, [selectedLevel]);
 
-  // Setup
+  // ── Setup
   if (!started) {
     return (
       <SetupScreen
         selectedLevel={selectedLevel}
         mode={mode}
+        direction={direction}
         onLevelChange={setSelectedLevel}
         onModeChange={setMode}
+        onDirectionChange={setDirection}
         onStart={() => setStarted(true)}
         dueCount={dueCount}
       />
     );
   }
 
-  // Done
+  // ── Done
   if (isDone) {
+    // 오답 단어가 있고 재학습 페이즈가 아니면 다시 외우기 프롬프트
+    if (!isReviewPhase && !showResult && wrongWordsRef.current.length > 0) {
+      return (
+        <ReviewPromptScreen
+          count={wrongWordsRef.current.length}
+          onReview={startReview}
+          onSkip={() => setShowResult(true)}
+        />
+      );
+    }
     return <ResultScreen {...sessionStats} onRestart={restart} />;
   }
 
   if (!currentWord) return null;
 
-  // ── Flashcard Mode ────────────────────────────────────────────────────────
+  // ── Flashcard Mode ──────────────────────────────────────────────────────────
   if (mode === 'flashcard') {
     const frontRot = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
     const backRot = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '360deg'] });
+
+    // 한→영 모드: 앞면에 한국어, 뒷면에 영단어
+    const frontContent =
+      direction === 'en-ko' ? (
+        <>
+          <Text style={styles.wordText}>{currentWord.word}</Text>
+          <Text style={styles.posText}>{currentWord.senses.map((s) => POS_KR[s.pos]).join(' / ')}</Text>
+        </>
+      ) : (
+        <>
+          {currentWord.senses.map((s, i) => (
+            <View key={i} style={{ alignItems: 'center', gap: 2 }}>
+              <Text style={styles.posText}>{POS_KR[s.pos]}</Text>
+              <Text style={styles.wordText}>{s.meaning}</Text>
+            </View>
+          ))}
+        </>
+      );
+
+    const backContent =
+      direction === 'en-ko' ? (
+        <>
+          <View style={[styles.levelTag, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+            <Text style={[styles.levelTagText, { color: 'rgba(255,255,255,0.8)' }]}>{currentWord.word}</Text>
+          </View>
+          {currentWord.senses.map((s, i) => (
+            <View key={i} style={styles.senseRow}>
+              <Text style={styles.sensePos}>{POS_KR[s.pos]}</Text>
+              <Text style={styles.meaningText}>{s.meaning}</Text>
+            </View>
+          ))}
+          <Text style={styles.exampleText}>"{currentWord.example}"</Text>
+        </>
+      ) : (
+        <>
+          <View style={[styles.levelTag, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+            <Text style={[styles.levelTagText, { color: 'rgba(255,255,255,0.8)' }]}>
+              {currentWord.senses[0].meaning}
+            </Text>
+          </View>
+          <Text style={styles.meaningText}>{currentWord.word}</Text>
+          <Text style={styles.posText2}>{currentWord.senses.map((s) => POS_KR[s.pos]).join(' / ')}</Text>
+          <Text style={styles.exampleText}>"{currentWord.example}"</Text>
+        </>
+      );
 
     return (
       <View style={styles.container}>
@@ -306,12 +442,16 @@ export default function StudyScreen() {
           </View>
         </View>
 
-        {/* Progress bar */}
         <View style={styles.progressBarWrap}>
           <View style={[styles.progressFill, { width: `${(cardIndex / studyWords.length) * 100}%` as any }]} />
         </View>
 
-        {/* Card */}
+        {isReviewPhase && (
+          <View style={styles.reviewBadge}>
+            <Text style={styles.reviewBadgeText}>🔄 복습 모드</Text>
+          </View>
+        )}
+
         <Animated.View style={[styles.cardContainer, { transform: [{ translateX: slideAnim }] }]}>
           <TouchableOpacity activeOpacity={0.95} onPress={handleFlip} style={styles.cardTouchable}>
             {/* Front */}
@@ -323,9 +463,8 @@ export default function StudyScreen() {
                   {LEVEL_LABEL[currentWord.level]}
                 </Text>
               </View>
-              <Text style={styles.wordText}>{currentWord.word}</Text>
-              <Text style={styles.posText}>{currentWord.senses.map((s) => POS_KR[s.pos]).join(' / ')}</Text>
-              <Text style={styles.flipHint}>탭하여 뜻 보기</Text>
+              {frontContent}
+              <Text style={styles.flipHint}>탭하여 {direction === 'en-ko' ? '뜻' : '영단어'} 보기</Text>
               <TouchableOpacity style={styles.bookmarkBtn} onPress={() => toggleBookmark(currentWord.id)}>
                 <Text style={styles.bookmarkEmoji}>{wordProgress?.bookmarked ? '⭐' : '☆'}</Text>
               </TouchableOpacity>
@@ -334,24 +473,13 @@ export default function StudyScreen() {
             <Animated.View
               style={[styles.card, styles.cardBack, SHADOWS.heavy, { transform: [{ rotateY: backRot }] }]}
             >
-              <View style={[styles.levelTag, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
-                <Text style={[styles.levelTagText, { color: 'rgba(255,255,255,0.8)' }]}>{currentWord.word}</Text>
-              </View>
-              {currentWord.senses.map((s, i) => (
-                <View key={i} style={styles.senseRow}>
-                  <Text style={styles.sensePos}>{POS_KR[s.pos]}</Text>
-                  <Text style={styles.meaningText}>{s.meaning}</Text>
-                </View>
-              ))}
-              <Text style={styles.exampleText}>"{currentWord.example}"</Text>
+              {backContent}
             </Animated.View>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Action buttons */}
         {isFlipped ? (
           <View style={styles.actionArea}>
-            {/* 확실히 알아요 */}
             <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
               <Text style={styles.confirmBtnText}>⚡ 확실히 알아요</Text>
               <Text style={styles.confirmBtnSub}>이후 학습에서 제외</Text>
@@ -367,14 +495,16 @@ export default function StudyScreen() {
           </View>
         ) : (
           <View style={styles.hintRow}>
-            <Text style={styles.hintText}>카드를 탭해서 뜻을 확인하세요</Text>
+            <Text style={styles.hintText}>카드를 탭해서 {direction === 'en-ko' ? '뜻을' : '영단어를'} 확인하세요</Text>
           </View>
         )}
       </View>
     );
   }
 
-  // ── Quiz Mode ─────────────────────────────────────────────────────────────
+  // ── Quiz Mode ──────────────────────────────────────────────────────────────
+  const quizCorrect = correctAnswer(currentWord);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -392,28 +522,46 @@ export default function StudyScreen() {
         <View style={[styles.progressFill, { width: `${(cardIndex / studyWords.length) * 100}%` as any }]} />
       </View>
 
+      {isReviewPhase && (
+        <View style={styles.reviewBadge}>
+          <Text style={styles.reviewBadgeText}>🔄 복습 모드</Text>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.quizContent} showsVerticalScrollIndicator={false}>
-        {/* Level badge */}
         <View style={[styles.levelTag, { backgroundColor: LEVEL_COLORS[currentWord.level] + '20', alignSelf: 'flex-start', marginBottom: 12 }]}>
           <Text style={[styles.levelTagText, { color: LEVEL_COLORS[currentWord.level] }]}>
             {LEVEL_LABEL[currentWord.level]}
           </Text>
         </View>
 
-        {/* Question card */}
         <View style={[styles.quizQuestionCard, SHADOWS.heavy]}>
-          <Text style={styles.quizLabel}>뜻을 고르세요</Text>
-          <Text style={styles.quizWord}>{currentWord.word}</Text>
-          <Text style={styles.quizPos}>{currentWord.senses.map((s) => POS_KR[s.pos]).join(' / ')}</Text>
+          <Text style={styles.quizLabel}>
+            {direction === 'en-ko' ? '뜻을 고르세요' : '영단어를 고르세요'}
+          </Text>
+          {direction === 'en-ko' ? (
+            <>
+              <Text style={styles.quizWord}>{currentWord.word}</Text>
+              <Text style={styles.quizPos}>{currentWord.senses.map((s) => POS_KR[s.pos]).join(' / ')}</Text>
+            </>
+          ) : (
+            <>
+              {currentWord.senses.map((s, i) => (
+                <View key={i} style={{ alignItems: 'center' }}>
+                  <Text style={styles.quizPos}>{POS_KR[s.pos]}</Text>
+                  <Text style={styles.quizWord}>{s.meaning}</Text>
+                </View>
+              ))}
+            </>
+          )}
         </View>
 
-        {/* Choices */}
         <View style={styles.choices}>
           {quizChoices.map((choice, idx) => {
             let choiceStyle = styles.choice;
             let textColor = COLORS.text;
             if (quizSelected !== null) {
-              if (choice === currentWord.senses[0].meaning) {
+              if (choice === quizCorrect) {
                 choiceStyle = StyleSheet.flatten([styles.choice, styles.choiceCorrect]) as any;
                 textColor = '#FFFFFF';
               } else if (choice === quizSelected) {
@@ -435,7 +583,6 @@ export default function StudyScreen() {
           })}
         </View>
 
-        {/* 확실히 알아요 - quiz mode */}
         {quizSelected === null && (
           <TouchableOpacity style={styles.confirmBtnSmall} onPress={handleConfirm}>
             <Text style={styles.confirmBtnSmallText}>⚡ 확실히 알아요 — 이후 학습에서 제외</Text>
@@ -572,6 +719,59 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
 
+  // Review prompt
+  reviewPromptContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  reviewPromptEmoji: { fontSize: 64 },
+  reviewPromptTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginTop: 12,
+  },
+  reviewPromptDesc: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 26,
+    marginTop: 10,
+    marginBottom: 32,
+  },
+  reviewPromptCount: {
+    color: COLORS.accent,
+    fontWeight: '800',
+    fontSize: 20,
+  },
+  reviewBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    marginBottom: 12,
+  },
+  reviewBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16 },
+  skipBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  skipBtnText: { color: COLORS.textMuted, fontWeight: '600', fontSize: 14 },
+
+  // Review badge (during review phase)
+  reviewBadge: {
+    alignSelf: 'center',
+    backgroundColor: COLORS.accent + '15',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: COLORS.accent + '40',
+  },
+  reviewBadgeText: { fontSize: 12, color: COLORS.accent, fontWeight: '700' },
+
   // Header
   header: {
     flexDirection: 'row',
@@ -656,6 +856,7 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
   },
   posText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500' },
+  posText2: { fontSize: 13, color: 'rgba(255,255,255,0.5)', fontWeight: '500' },
   senseRow: { alignItems: 'center', marginVertical: 2 },
   sensePos: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '500', marginBottom: 2 },
   flipHint: { position: 'absolute', bottom: 24, fontSize: 12, color: COLORS.textMuted },

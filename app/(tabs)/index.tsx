@@ -30,9 +30,15 @@ export default function HomeScreen() {
   }, [progress]);
 
   const todayWord = useMemo(() => {
-    const idx = new Date().getDate() % OXFORD_3000.length;
-    return OXFORD_3000[idx];
-  }, []);
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 0);
+    const dayOfYear = Math.floor((now.getTime() - start.getTime()) / 86400000);
+    const seed = now.getFullYear() * 1000 + dayOfYear;
+
+    const unseen = OXFORD_3000.filter((w) => !progress[w.id] || progress[w.id].status === 'unseen');
+    const pool = unseen.length > 0 ? unseen : OXFORD_3000;
+    return pool[seed % pool.length];
+  }, [progress]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>

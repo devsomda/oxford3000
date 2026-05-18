@@ -11,6 +11,7 @@ import { useState, useMemo } from 'react';
 import { useWordStore } from '../../store/wordStore';
 import { OXFORD_3000, LEVEL_COLORS, CEFR, POS_KR, LEVEL_LABEL } from '../../data/oxford3000';
 import { COLORS, SHADOWS } from '../../utils/colors';
+import { FONTS } from '../../utils/fonts';
 
 const LEVELS: CEFR[] = ['A1', 'A2', 'B1', 'B2'];
 type FilterTab = 'all' | 'bookmarked' | 'mastered' | 'learning' | 'confirmed';
@@ -376,7 +377,7 @@ const styles = StyleSheet.create({
   },
   wordText: {
     fontSize: 20,
-    fontWeight: '800',
+    fontFamily: FONTS.interExtraBold,
     color: COLORS.text,
     letterSpacing: -0.3,
   },

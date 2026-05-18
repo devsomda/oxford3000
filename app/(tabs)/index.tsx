@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useWordStore } from '../../store/wordStore';
 import { OXFORD_3000, LEVEL_COLORS, LEVEL_LABEL, CEFR } from '../../data/oxford3000';
 import { COLORS, SHADOWS } from '../../utils/colors';
+import { FONTS } from '../../utils/fonts';
 
 const LEVELS: CEFR[] = ['A1', 'A2', 'B1', 'B2'];
 
@@ -180,7 +181,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: FONTS.interExtraBold,
     color: COLORS.text,
   },
   statLabel: {
@@ -242,7 +243,7 @@ const styles = StyleSheet.create({
   },
   todayWord: {
     fontSize: 36,
-    fontWeight: '800',
+    fontFamily: FONTS.interExtraBold,
     color: '#FFFFFF',
     letterSpacing: -1,
   },

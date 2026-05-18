@@ -19,6 +19,7 @@ import {
   Word,
 } from "../../data/oxford3000";
 import { COLORS, SHADOWS } from "../../utils/colors";
+import { FONTS } from "../../utils/fonts";
 
 const { width } = Dimensions.get("window");
 const LEVELS: CEFR[] = ["A1", "A2", "B1", "B2"];
@@ -1087,7 +1088,7 @@ const styles = StyleSheet.create({
   levelTagText: { fontSize: 12, fontWeight: "700" },
   wordText: {
     fontSize: 40,
-    fontWeight: "800",
+    fontFamily: FONTS.interExtraBold,
     color: COLORS.text,
     textAlign: "center",
     letterSpacing: -1,
@@ -1191,7 +1192,7 @@ const styles = StyleSheet.create({
   },
   quizWord: {
     fontSize: 34,
-    fontWeight: "800",
+    fontFamily: FONTS.interExtraBold,
     color: "#FFFFFF",
     textAlign: "center",
     letterSpacing: -0.5,
@@ -1257,7 +1258,7 @@ const styles = StyleSheet.create({
 
   // Result
   resultEmoji: { fontSize: 64 },
-  resultScore: { fontSize: 52, fontWeight: "800", color: COLORS.text },
+  resultScore: { fontSize: 52, fontFamily: FONTS.interExtraBold, color: COLORS.text },
   resultSub: { fontSize: 15, color: COLORS.textMuted },
   resultRow: {
     flexDirection: "row",
@@ -1266,7 +1267,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   resultItem: { alignItems: "center", gap: 4 },
-  resultNum: { fontSize: 30, fontWeight: "800" },
+  resultNum: { fontSize: 30, fontFamily: FONTS.interExtraBold },
   resultLabel: { fontSize: 12, color: COLORS.textMuted },
   resultDivider: { width: 1, height: 36, backgroundColor: COLORS.border },
   masteryHint: {

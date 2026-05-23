@@ -106,7 +106,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, SHADOWS.card]}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>단어 수</Text>
-            <Text style={styles.infoValue}>498개 (Oxford 3000)</Text>
+            <Text style={styles.infoValue}>3,000개 (Oxford 3000)</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>

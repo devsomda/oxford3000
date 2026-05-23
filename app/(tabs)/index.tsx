@@ -46,7 +46,7 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.greeting}>안녕하세요! 👋</Text>
-        <Text style={styles.title}>Oxford 3000</Text>
+        <Text style={styles.title}>Core Words 3000</Text>
         <Text style={styles.subtitle}>오늘도 단어를 외워볼까요?</Text>
       </View>
 

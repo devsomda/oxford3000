@@ -756,19 +756,11 @@ export default function StudyScreen() {
             {direction === "en-ko" ? "뜻을 고르세요" : "영단어를 고르세요"}
           </Text>
           {direction === "en-ko" ? (
-            <>
-              <Text style={styles.quizWord}>{currentWord.word}</Text>
-              <Text style={styles.quizPos}>
-                {currentWord.senses.map((s) => POS_KR[s.pos]).join(" / ")}
-              </Text>
-            </>
+            <Text style={styles.quizWord}>{currentWord.word}</Text>
           ) : (
             <>
               {currentWord.senses.map((s, i) => (
-                <View key={i} style={{ alignItems: "center" }}>
-                  <Text style={styles.quizPos}>{POS_KR[s.pos]}</Text>
-                  <Text style={styles.quizWord}>{s.meaning}</Text>
-                </View>
+                <Text key={i} style={styles.quizWord}>{s.meaning}</Text>
               ))}
             </>
           )}

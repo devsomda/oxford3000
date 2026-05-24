@@ -344,15 +344,20 @@ export default function StudyScreen() {
         duration: 180,
         useNativeDriver: true,
       }).start(() => {
-        slideAnim.setValue(0);
-        flipAnim.setValue(0);
-        setIsFlipped(false);
-        setQuizSelected(null);
-        if (cardIndex + 1 >= studyWords.length) {
-          setIsDone(true);
-        } else {
-          setCardIndex((i) => i + 1);
-        }
+        // setValue doesn't update the native layer after a native-driver animation on iOS.
+        // Use zero-duration timing to properly flush both values before re-render.
+        Animated.parallel([
+          Animated.timing(slideAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+          Animated.timing(flipAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ]).start(() => {
+          setIsFlipped(false);
+          setQuizSelected(null);
+          if (cardIndex + 1 >= studyWords.length) {
+            setIsDone(true);
+          } else {
+            setCardIndex((i) => i + 1);
+          }
+        });
       });
     },
     [cardIndex, studyWords.length, slideAnim, flipAnim],
@@ -419,8 +424,10 @@ export default function StudyScreen() {
     setIsFlipped(false);
     setQuizSelected(null);
     setIsDone(false);
-    flipAnim.setValue(0);
-    slideAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(slideAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+      Animated.timing(flipAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+    ]).start();
   }, [flipAnim, slideAnim]);
 
   const restart = () => {
@@ -434,8 +441,10 @@ export default function StudyScreen() {
     setSessionStats({ correct: 0, wrong: 0, confirmed: 0 });
     setIsDone(false);
     setStarted(false);
-    flipAnim.setValue(0);
-    slideAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(slideAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+      Animated.timing(flipAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+    ]).start();
   };
 
   const dueCount = useMemo(() => {

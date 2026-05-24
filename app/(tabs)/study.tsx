@@ -499,19 +499,11 @@ export default function StudyScreen() {
     // 한→영 모드: 앞면에 한국어, 뒷면에 영단어
     const frontContent =
       direction === "en-ko" ? (
-        <>
-          <Text style={styles.wordText}>{currentWord.word}</Text>
-          <Text style={styles.posText}>
-            {currentWord.senses.map((s) => POS_KR[s.pos]).join(" / ")}
-          </Text>
-        </>
+        <Text style={styles.wordText}>{currentWord.word}</Text>
       ) : (
         <>
           {currentWord.senses.map((s, i) => (
-            <View key={i} style={{ alignItems: "center", gap: 2 }}>
-              <Text style={styles.posText}>{POS_KR[s.pos]}</Text>
-              <Text style={styles.wordText}>{s.meaning}</Text>
-            </View>
+            <Text key={i} style={styles.wordText}>{s.meaning}</Text>
           ))}
         </>
       );
@@ -532,10 +524,7 @@ export default function StudyScreen() {
             </Text>
           </View>
           {currentWord.senses.map((s, i) => (
-            <View key={i} style={styles.senseRow}>
-              <Text style={styles.sensePos}>{POS_KR[s.pos]}</Text>
-              <Text style={styles.meaningText}>{s.meaning}</Text>
-            </View>
+            <Text key={i} style={styles.meaningText}>{s.meaning}</Text>
           ))}
           <Text style={styles.exampleText}>"{currentWord.example}"</Text>
         </>
@@ -554,9 +543,6 @@ export default function StudyScreen() {
             </Text>
           </View>
           <Text style={styles.meaningText}>{currentWord.word}</Text>
-          <Text style={styles.posText2}>
-            {currentWord.senses.map((s) => POS_KR[s.pos]).join(" / ")}
-          </Text>
           <Text style={styles.exampleText}>"{currentWord.example}"</Text>
         </>
       );
